@@ -1,6 +1,7 @@
 # AirPlay over OWL/AWDL Validation
 
 Date: 2026-04-28
+Last updated: 2026-04-29
 
 目标环境：
 
@@ -8,7 +9,7 @@ Date: 2026-04-28
 - OWL 负责通过 `awdl0` 提供 AWDL 网络能力。
 - UxPlay 或其他 AirPlay 接收端负责投屏协议和渲染。
 - 不假设 Raspberry Pi 5 板载 Wi-Fi 能满足 OWL 需要的 active monitor 和注入能力。
-- 当前重点验证外接半高卡是否能作为 AWDL 无线网卡。购买时型号标注为 RTL8852BE，但当前系统实际枚举为 Atheros AR928X/AR9280。
+- 当前重点验证外接半高卡是否能作为 AWDL 无线网卡。当前已插入并已测试的外接卡统一按 AR928X 记录；另有一张新购对比卡待到货。
 
 读者背景：
 
@@ -50,7 +51,7 @@ iPhone/macOS
 - `awdl0`：Avahi/UxPlay 应该把它当成“AirPlay 局域网接口”。
 - Avahi：在 `awdl0` 上发布和响应 Bonjour/DNS-SD。
 - UxPlay：实现 AirPlay 接收端协议和渲染。
-- 外接 Wi-Fi 卡：真正发/收底层 AWDL Wi-Fi 帧的物理无线网卡。当前系统识别为 AR928X/AR9280，驱动为 `ath9k`，接口为 `wlan1`。
+- 外接 Wi-Fi 卡：真正发/收底层 AWDL Wi-Fi 帧的物理无线网卡。当前系统识别为 AR928X，驱动为 `ath9k`，接口为 `wlan1`；待到货对比卡为 AR9280。
 
 最重要的边界是：**OWL 不实现 AirPlay，UxPlay 不实现 AWDL**。它们之间的集成点就是 Linux 网络接口 `awdl0`。
 
@@ -104,19 +105,18 @@ OWL 不是 AirPlay 接收端。它创建一个 Linux 虚拟网络接口承载 AW
 最近一次硬件枚举和能力检查结果：
 
 - `lspci -nnk` 显示外接 PCIe Wi-Fi 卡是 `Qualcomm Atheros AR928X Wireless Network Adapter [168c:002a]`。
-- 内核日志显示具体为 `Atheros AR9280 Rev:2`。
-- 当前驱动为 `ath9k`，接口为 `wlan1`，对应 `phy1`。
-- 购买时标注的 RTL8852BE 没有出现在 PCIe 枚举里；如果外观/商品信息写 RTL8852BE，实际芯片或当前插入卡与商品标注不一致。
+- 内核日志曾显示 `Atheros AR9280 Rev:2`，但本文按当前实物/PCI 枚举口径记为“当前 AR928X”；待到货的新卡单独记为“AR9280”。
+- 当前驱动为 `ath9k`，接口为 `wlan1`。最近一次 `iw dev` 中它对应 `phy0`；早先记录里可能出现过 `phy1`，后续命令以本机实时 `iw dev` 输出为准。
 - 加入 `dtoverlay=pcie-32bit-dma-pi5` 后，之前的 `ath9k ... Failed to allocate tx descriptors: -12` 已解决。
 - `wlan1` 不承载默认路由；当前普通联网走 `wlan0`。
 
-`phy1` 能力结论：
+`phyX` 能力结论：
 
 - 支持 `monitor` interface mode。
-- `iw phy phy1 info` 明确显示 `Device supports active monitor (which will ACK incoming frames)`。
+- `iw phy phyX info` 明确显示 `Device supports active monitor (which will ACK incoming frames)`。
 - 支持 `set_channel` 和 `frame` 命令。
 - 支持 TX/RX 多种管理帧类型，满足后续 frame injection 验证的基础条件。
-- 当前监管域下 channel 6 可用；channel 44 和 149 在 `phy1` 上显示 `no IR`，所以第一轮 OWL 验证建议从 channel 6 开始。
+- 当前监管域下 channel 6 可用；channel 44 和 149 在该 phy 上显示 `no IR`，所以第一轮 OWL 验证建议从 channel 6 开始。
 
 已做过的临时 active monitor 冒烟测试：
 
@@ -173,10 +173,10 @@ OWL channel 6 启动结果：
 
 channel 44/149 结果：
 
-- `iw phy phy1 channels` 仍显示 channel 44 和 149 为 `No IR`。
+- `iw phy phyX channels` 仍显示 channel 44 和 149 为 `No IR`。
 - `sudo ./build/daemon/owl -i wlan1 -h awdl0 -c 44 -vv -N` 会启动，但日志提示 `Channel 44 [5220 MHz] does not allow to initiate radiation first (no IR)`。
 - `sudo ./build/daemon/owl -i wlan1 -h awdl0 -c 149 -vv -N` 同样提示 `Channel 149 [5745 MHz] does not allow to initiate radiation first (no IR)`。
-- 因此当前 AR9280/ath9k 在这台 Pi 5 上，5 GHz 的两个 AWDL 常用频道不适合作为首选验证路径。
+- 因此当前 AR928X/ath9k 在这台 Pi 5 上，5 GHz 的两个 AWDL 常用频道不适合作为首选验证路径。
 
 本轮结束状态：
 
@@ -184,16 +184,16 @@ channel 44/149 结果：
 - `awdl0` 已消失。
 - `wlan1` 已恢复为 managed。
 - NetworkManager 中 `wlan1` 是 disconnected，默认联网仍走 `wlan0`。
-- `UxPlay` 当前未安装；Debian trixie apt 源里可选版本为 `1.71.1-1`。
+- 当时 `UxPlay` 尚未安装；Debian trixie apt 源里可选版本为 `1.71.1-1`。后续 Avahi/UxPlay 阶段已经安装该版本。
 
 当前结论：
 
-- AR9280/ath9k 的 active monitor 基础能力可用。
+- AR928X/ath9k 的 active monitor 基础能力可用。
 - `tcpdump` radiotap 抓包可用。
 - OWL 在 channel 6 上可以通过手动 active monitor + `-N` 路径创建 `awdl0`。
 - OWL 自己的 AWDL action frame 能在本机 monitor 抓包中看到，说明发送路径至少进入了无线接口。
-- 尚未证明 iPhone 和 OWL 互相发现，也尚未证明 `awdl0` 上出现来自 Apple peer 的 IPv6/mDNS 流量。
-- 下一步重点不是 UxPlay，而是先让 iPhone peer 出现在 OWL 日志或 `ip -6 neigh show dev awdl0` 里。
+- 当时尚未证明 iPhone 和 OWL 互相发现，也尚未证明 `awdl0` 上出现来自 Apple peer 的 IPv6/mDNS 流量。
+- 当时的下一步重点不是 UxPlay，而是先让 iPhone peer 出现在 OWL 日志或 `ip -6 neigh show dev awdl0` 里。
 
 ### 2026-04-28 追加 peer 发现验证
 
@@ -244,9 +244,353 @@ sudo tcpdump -i wlan1 -e -n -vv \
 新的判断：
 
 - `-f` 不能解决 peer 发现问题。
-- 当前最可能的下一步不是 Avahi/UxPlay，而是继续确认 iPhone 是否真的进入 AWDL 发现状态，以及 AR9280/ath9k 是否能在实际 Apple AWDL 场景里看到对端。
+- 当前最可能的下一步不是 Avahi/UxPlay，而是继续确认 iPhone 是否真的进入 AWDL 发现状态，以及当前 AR928X/ath9k 是否能在实际 Apple AWDL 场景里看到对端。
 - 下次重测时建议明确使用 iPhone 的 AirDrop/隔空投送触发：打开照片或文件的分享面板，进入 AirDrop 页面，接收设置临时设为“所有人/Everyone for 10 Minutes”，让手机靠近树莓派并保持屏幕点亮。
-- 如果这样仍然在 6/44/149 都看不到外部 vendor action frame，建议引入第二块已知能抓 Apple AWDL 的监听设备或换一张已知 OWL 兼容的 Wi-Fi 卡复测，用来区分 iPhone 触发问题和当前 AR9280/ath9k/转接板组合问题。
+- 如果这样仍然在 6/44/149 都看不到外部 vendor action frame，建议引入第二块已知能抓 Apple AWDL 的监听设备或等待新购 AR9280 到货后复测，用来区分 iPhone 触发问题和当前 AR928X/ath9k/转接板组合问题。
+
+### 2026-04-29 两个关键假设
+
+当前有两个主要假设，二者都合理，不能只靠现有结果排除其中一个。
+
+假设 A：当前 AR928X 看起来具备能力，但实际不适合本机 OWL 场景。
+
+支持这个假设的现象：
+
+- `iw phy` 显示 active monitor 能力，手动切换也成功，但 OWL 自动切换 monitor 时会遇到 `Object busy`，只能走 `-N` workaround。
+- channel 44/149 当前被标记为 `No IR`，不能作为主动发射信道使用。
+- channel 6 能发送 OWL 自己的 vendor action frame，但没有发现 iPhone peer。
+- OWL README 推荐/测试过的是 AR9280；当前实测卡按你的口径是 AR928X，所以待到货 AR9280 有明确的 A/B 对比价值。
+
+验证这个假设的最好办法：
+
+- 等新网卡到货后，在同一台 Pi、同一系统、同一 iPhone、同一位置重复完全相同的 6/44/149 抓包和 OWL peer 测试。
+- 如果新购 AR9280 能看到 iPhone AWDL vendor action frame 或能 add peer，而当前 AR928X 不能，则问题基本落在当前 AR928X/ath9k/转接板组合。
+- 如果两张网卡都看不到 iPhone AWDL vendor action frame，则硬件单点嫌疑下降，转向 iPhone 触发方式、iOS 版本或 OWL 协议兼容性。
+
+假设 B：iOS 26 上 AWDL/AirDrop/AirPlay 相关行为已经和当前 OWL 不兼容，或者至少更难触发。
+
+支持这个假设的理由：
+
+- OWL 是逆向实现，README 已明确提示它可能不兼容未来 AWDL 版本。
+- OpenDrop/OWL 生态也明确存在发现层限制：Linux 侧不能像 Apple 设备一样通过 BLE 广播完整触发对端 AWDL。
+- Apple 官方 AirDrop 行为在新系统里有更多限制，例如“所有人 10 分钟”和面向非联系人的 AirDrop code，这些不一定改变 AWDL 帧格式，但会影响发现/握手路径。
+- OWL 的代码和论文时代主要对应较早的 iOS/macOS AWDL 行为；没有证据说明它已经针对 iOS 26 做过持续兼容。
+
+验证这个假设的最好办法：
+
+- 找一台较旧 iOS/iPadOS 设备，或一台 macOS 设备，重复同样的 AirDrop/AWDL 抓包。
+- 用两台 Apple 设备互相 AirDrop，同时用 `wlan1` 纯监听 6/44/149。目标不是让 OWL 参与，而是确认当前网卡能否被动看到真实 Apple AWDL 帧。
+- 如果 Apple-to-Apple AirDrop 发生时，当前 AR928X 仍然看不到任何 vendor-specific action frame，那么优先怀疑监听硬件/信道/抓包方式。
+- 如果能看到 Apple-to-Apple AWDL 帧，但 OWL 加不进 peer，则问题更偏向 OWL 协议兼容性或 active monitor/injection/ACK。
+- 如果旧系统能和 OWL add peer，而 iOS 26 不行，则 iOS 26 兼容性假设成立。
+
+建议的下一轮最小验证矩阵：
+
+| 测试 | 设备/网卡 | 预期能回答的问题 |
+| --- | --- | --- |
+| Apple-to-Apple AirDrop 旁路抓包 | 当前 AR928X 纯 monitor | 当前卡能不能看到真实 Apple AWDL 帧 |
+| OWL vs 旧 iOS/macOS | 当前 AR928X | OWL 是否仍能和较旧 Apple AWDL 实现通信 |
+| OWL vs iOS 26 | 新购 AR9280 | 当前失败是否是 AR928X 单点问题 |
+| Apple-to-Apple AirDrop 旁路抓包 | 新购 AR9280 | 新卡是否比当前 AR928X 更适合 AWDL 抓包 |
+
+判断标准：
+
+- 如果“Apple-to-Apple AirDrop 旁路抓包”都看不到 AWDL 帧，不要继续调 UxPlay。
+- 如果能旁路看到 Apple AWDL 帧，但 OWL 没有 peer，继续看 OWL 协议兼容、channel sequence、ACK/injection。
+- 如果 OWL 能和旧 iOS/macOS 通，但不能和 iOS 26 通，才进入 iOS 26 协议差异分析。
+- 如果 OWL 能和 iOS 26 add peer，再继续推进 Avahi/UxPlay over `awdl0`。
+
+### 2026-04-29 重新验证结果
+
+本轮测试前，iPhone 侧已忽略所有 Wi-Fi 网络，只保持 Wi-Fi 和 Bluetooth 开启。测试目标是重新验证“当前 AR928X/ath9k + Pi 5 + OWL 是否能看到 Apple AWDL peer，并把它映射到 `awdl0`”。
+
+重要修正：直接使用 `wlan1` 作为 OWL 接口不可靠。本轮发现 `iw dev wlan1 info` 显示频道已经切到 6/11/149，但 `tcpdump` 的 radiotap 频率仍然持续显示 `2412 MHz`，实际抓到的是 channel 1 的 beacon/probe response。这会让之前“固定 channel 6/44/149 纯监听但看不到 AWDL”的结果带有误导性。
+
+更可靠的本机路径是：
+
+```sh
+sudo nmcli device set wlan1 managed no
+sudo nmcli device set p2p-dev-wlan1 managed no
+
+sudo ip link set wlan1 down
+sudo iw dev wlan1 interface add monawdl type monitor flags active
+sudo ip link set monawdl up
+sudo iw dev monawdl set channel 6 HT20
+
+sudo ./build/daemon/owl -i monawdl -h awdl0 -c 6 -vv -f -N
+```
+
+关键结果：
+
+- 只保留 `monawdl` 处于 UP、`wlan1` down 后，radiotap 频率能正确跟随设置。例如设置 channel 149 后，`tcpdump -i monawdl` 显示 `5745 MHz`。
+- 用 `monawdl` 启动 OWL 后，OWL 立即收到外部 AWDL PSF。
+- 日志中出现多个 peer，例如 `32:21:f2:ae:d5:39`、`46:23:d6:59:0b:dc`、`c6:96:0f:47:c4:f1`。
+- `ip -6 neigh show dev awdl0` 出现永久邻居项，例如 `fe80::3021:f2ff:feae:d539 lladdr 32:21:f2:ae:d5:39 PERMANENT`。
+- `tcpdump -i monawdl` 能抓到外部 AWDL vendor action frame，频率为 `2437 MHz`。
+- `ping -6 -I awdl0 fe80::3021:f2ff:feae:d539` 成功，3 发 3 收，0% packet loss。
+- Avahi daemon 正在运行，`avahi-browse -a -t` 能看到 `awdl0 IPv6 OpenClaw02 ... Workstation local`。
+- 随后已经进入 Avahi/UxPlay 阶段；当前安装的 UxPlay 版本为 Debian trixie 源里的 `1.71.1-1`。
+
+本轮结论：
+
+- “当前 AR928X/ath9k 完全不能用于 OWL”这个假设被明显削弱。至少在 `monawdl` 路径下，AWDL peer 发现、IPv6 neighbor 添加、link-local ping 都已经跑通。
+- “iOS 26 完全不能和 OWL 通信”这个假设也被削弱。当前已经能收到 Apple AWDL PSF，并能 ping 通其中一个 AWDL peer。
+- 真正暴露出来的新问题是：不能直接相信 `iw dev wlan1 info` 的频道显示，必须用 radiotap 频率做二次确认。
+- 下一步应该进入 Avahi/UxPlay 阶段：让 AirPlay 接收端服务明确发布到 `awdl0`，并观察 iPhone 的 Screen Mirroring 是否通过 `awdl0` 发送 mDNS 和 RTSP 连接。
+- 仍然需要保留待到货 AR9280 的 A/B 测试价值，因为它可以验证 `monawdl` workaround 是否是当前卡/驱动/接口状态特有的问题。
+
+### 2026-04-29 Avahi/UxPlay 阶段验证结果
+
+本轮目标是先验证 Linux 侧能否把 AirPlay 接收端发布到 `awdl0`，再观察 iPhone 是否会通过 AWDL 进入发现和连接流程。
+
+已完成项：
+
+- 已安装 `uxplay 1.71.1-1`，`avahi-daemon` 处于 active。
+- 使用 `monawdl` 路径启动 OWL 后，`awdl0` 获得 IPv6 link-local 地址：`fe80::b674:9fff:fe6c:bc2f/64`。
+- UxPlay 以测试渲染方式启动成功：
+
+```sh
+uxplay -n OwlPi-AWDL -nh -p 41000 -vs fakesink -as fakesink -nohold -d
+```
+
+说明：在 Codex 普通 sandbox 中直接运行 UxPlay 会报 `Error initialising socket 1` / `dnssd_register_raop failed with error code -65553`，但在完整系统权限下运行成功。这更像是 sandbox 权限/网络命名空间问题，不是 UxPlay 参数本身失败。
+
+Avahi/DNS-SD 发布结果：
+
+- `avahi-browse -a -t -r` 能看到 UxPlay 服务出现在 `awdl0 IPv6` 上。
+- `_airplay._tcp` 服务名为 `OwlPi-AWDL`，地址为 `fe80::b674:9fff:fe6c:bc2f`，端口为 `41001`。
+- `_raop._tcp` 服务名为 `2CCF67A0257B@OwlPi-AWDL`，地址同样为 `fe80::b674:9fff:fe6c:bc2f`，端口为 `41001`。
+- TXT record 中能看到 `model=AppleTV3,2`、`features=0x527FFEE6,0x0`、`deviceid=2c:cf:67:a0:25:7b`、`srcvers=220.68` 等字段。
+- `tcpdump -i awdl0` 能看到本机 Avahi 在 `awdl0` 上发送 `_airplay._tcp.local` 和 `_raop._tcp.local` 的 mDNS 查询/响应。
+
+本轮通过结论：
+
+- Linux 侧“UxPlay + Avahi 发布到 `awdl0 IPv6`”已经验证通过。
+- 这说明只要 OWL 提供 `awdl0`，普通 DNS-SD/AirPlay 接收端栈确实可以把 AWDL 当成一张本地 IPv6 网卡来发布服务。
+
+本轮未通过/未完成项：
+
+- 90 秒抓包期间，`ip -6 neigh show dev awdl0` 没有出现新的 iPhone peer。
+- `tcpdump -i awdl0 'ip6 and (udp port 5353 or tcp port 41001 or icmp6)'` 只看到本机 Avahi/mDNS 流量，没有看到 iPhone 发来的 mDNS query 或 TCP 连接。
+- `tcpdump -i monawdl` 针对外部 AWDL vendor action frame 的过滤结果为 0 包。
+- 因此还不能证明 iPhone 已经通过 AWDL 发现或连接了 `OwlPi-AWDL`。
+
+下一轮 Avahi/UxPlay 验证重点：
+
+1. 重新启动 OWL + UxPlay 后，先要求 `ip -6 neigh show dev awdl0` 出现 Apple peer。
+2. iPhone 侧打开 Screen Mirroring，并可先打开 AirDrop/分享面板来强制触发 AWDL。
+3. 如果 iPhone 列表里出现 `OwlPi-AWDL`，必须同时抓到 `awdl0` 上来自 iPhone 的 mDNS 或 TCP 41001 流量，才能判定发现路径真的走 AWDL。
+4. 如果列表不出现，而 OWL 已经有 peer，则重点查 Avahi 是否响应了来自 peer 的 `_airplay._tcp` / `_raop._tcp` 查询。
+5. 如果列表出现但连接失败，则进入 UxPlay IPv6 监听、端口、防火墙、RTSP/pairing 日志排查。
+
+### 2026-04-29 UxPlay LAN 基线与 AWDL 触发复测
+
+用户已手动确认：在普通同 Wi-Fi 网络下，UxPlay 可以被 iPhone 发现，并且可以正常投屏显示。因此 UxPlay 基础功能和 iOS 26 的普通 AirPlay 投屏路径已经通过，不再是当前主嫌疑点。
+
+本轮继续验证“Wi-Fi 未连接热点，只开启 Wi-Fi/Bluetooth 时，iPhone 是否会通过 Screen Mirroring 或 AirDrop 触发 AWDL”。
+
+关键观察：
+
+- 用户此前一直停留在 Screen Mirroring 界面，iPhone Wi-Fi 未连接具体热点，Bluetooth 开启；树莓派侧没有看到来自 iPhone 的 `awdl0` neighbor、mDNS query 或 TCP 连接。
+- 本轮准备纯监听时，发现当前 AR928X/ath9k 出现频道控制异常：`iw dev wlan1 info` 或 `iw dev monawdl info` 显示已经切到 channel 6/11/149，但 `tcpdump` radiotap 仍持续显示 `2412 MHz`，也就是 channel 1。
+- 即使只保留 `wlan1` 自身为 monitor，不创建 `monawdl`，`iwconfig wlan1` 显示 `Frequency:5.745 GHz` 时，`tcpdump -i wlan1` 仍然抓到 `2412 MHz` 的 beacon/probe/data。
+- 因此当前会话里不能把无线侧 `tcpdump` 当作可靠的 channel 6/44/149 旁路观察证据。
+
+随后改用 OWL 自身作为判据：
+
+```sh
+sudo iw dev wlan1 set channel 6 HT20
+timeout 120 sudo ./build/daemon/owl -i wlan1 -h awdl0 -c 6 -vv -f -N
+```
+
+测试期间要求 iPhone 进入 AirDrop 分享页面，并尽量触发附近设备发现。
+
+结果：
+
+- OWL 能创建 `awdl0`，并持续发送 MIF/PSF。
+- `awdl0` 有本机 IPv6 link-local 地址。
+- `awdl0` 上只看到本机发出的 IPv6/mDNS/ICMPv6 流量。
+- `ip -6 neigh show dev awdl0` 一直为空。
+- OWL 日志没有出现 `add peer ...`，也没有看到可用外部 peer。
+- 120 秒后测试超时结束，`awdl0` 被清理，`wlan1` 已恢复为 managed/disconnected。
+
+本轮结论：
+
+- “UxPlay 本身不能被 iOS 26 使用”已排除。
+- 当前阻塞点回到 AWDL 层：iPhone 没有被当前 OWL/AR928X 组合稳定发现，或者当前 AR928X/ath9k 的实际频道/监听/注入状态不可靠。
+- 在这个状态下继续调 Avahi/UxPlay 收益不大，因为 AirPlay 发现必须先建立在 `awdl0` 能看到 Apple peer 的基础上。
+
+下一步建议：
+
+1. 优先等待新购 AR9280 到货，按同样步骤做 A/B 对比。
+2. 如果要继续用当前 AR928X 排查，先做“Apple-to-Apple AirDrop 旁路抓包”：用两台 Apple 设备互传 AirDrop，同时用当前卡监听，目标是确认它到底能不能看到真实 Apple AWDL 帧。
+3. 如果旁路抓包仍然只显示 channel 1 或看不到 AWDL，则重点怀疑当前 AR928X/驱动/转接板状态，而不是 AirPlay 或 UxPlay。
+4. 如果旁路抓包能看到 Apple AWDL，但 OWL 仍不能 add peer，再继续看 OWL 兼容性、ACK/injection 和 iOS 26 差异。
+
+### 2026-04-29 监管域与 `no IR` 复测
+
+本轮目标是验证能否通过正常监管域配置解除 channel 44/149 的 `no IR` 限制。
+
+执行前状态：
+
+```text
+global country CN
+phy#1 country 99: DFS-UNSET
+phy#1 5GHz: PASSIVE-SCAN
+channel 44: no IR
+channel 149: no IR
+```
+
+已尝试的合法配置：
+
+```sh
+sudo iw reg set CN
+iw reg get
+iw phy phy1 info
+```
+
+结果：
+
+- `global` 仍为 `country CN`。
+- `phy#1` 仍为 `country 99: DFS-UNSET`。
+- 5GHz 仍显示 `PASSIVE-SCAN`。
+- channel 44 仍显示 `no IR`。
+- channel 149 仍显示 `no IR`。
+
+随后对 `wlan1` 做了温和的 down/up 刷新：
+
+```sh
+sudo ip link set wlan1 down
+sudo ip link set wlan1 up
+```
+
+再次复查后结果仍然不变。
+
+本轮阶段性结论：
+
+- 仅通过 `sudo iw reg set CN` 不能解除当前 AR928X/ath9k 的 44/149 `no IR` 限制。
+- 当时当前卡的 `phy#1` 没有跟随 global `CN` 监管域切换，仍保持 `country 99` 和 5GHz passive-scan 约束。
+- 后续继续验证发现：在 global `CN` 已存在的前提下，重载 ath9k 模块可以让 44/149 的 `no IR` 消失。见下一节。
+
+### 2026-04-29 ath9k 重载后解除 `no IR`
+
+本轮目标是在不修改驱动、EEPROM 或 wireless-regdb 的前提下，尝试让 ath9k 在 `CN` 监管域已存在的状态下重新初始化。
+
+先确认已有条件：
+
+- `/proc/cmdline` 已包含 `cfg80211.ieee80211_regdom=CN`。
+- `wireless-regdb` 已安装，版本为 `2026.02.04-1~deb13u1`。
+- `/lib/firmware/regulatory.db` 指向 Debian regulatory.db。
+- 启动日志中 ath9k 读到 `EEPROM regdomain: 0x6b`，并出现 `ath_regd_init` warning；这解释了为什么简单 `iw reg set CN` 不足以让 `phy` 立即跟随。
+
+执行的非破坏性重载流程：
+
+```sh
+nmcli device set wlan1 managed no
+nmcli device set p2p-dev-wlan1 managed no
+sudo ip link set wlan1 down
+
+sudo modprobe -r ath9k
+sudo modprobe -r ath9k_common
+sudo modprobe -r ath9k_hw
+sudo modprobe -r ath
+
+sudo iw reg set CN
+sudo modprobe ath9k
+```
+
+重载后结果：
+
+- 外接卡重新枚举为 `phy#2`，接口仍为 `wlan1`。
+- `iw phy phy2 info` 中 channel 44 不再显示 `no IR`。
+- `iw phy phy2 info` 中 channel 149 不再显示 `no IR`。
+- channel 149 功率显示为 `18.0 dBm`，低于之前的 `33.0 dBm` 标称值，但已不再是 passive/no-IR 状态。
+
+随后用 OWL 做短启动验证：
+
+```sh
+sudo ip link set wlan1 down
+sudo iw dev wlan1 set type monitor
+sudo iw dev wlan1 set monitor active
+sudo ip link set wlan1 up
+sudo iw dev wlan1 set channel 149 HT20
+timeout 5 sudo ./build/daemon/owl -i wlan1 -h awdl0 -c 149 -vv -f -N
+```
+
+OWL 输出关键结果：
+
+```text
+Channel 149 [5745 MHz] is available for frame injection
+```
+
+本轮结论：
+
+- 当前会话内，ath9k 模块重载后，44/149 的 `no IR` 已经解除。
+- OWL 已确认 channel 149 可以用于 frame injection。
+- 这条路径没有修改驱动、EEPROM 或 regulatory.db，但它可能不是永久状态；重启后仍需复查 `iw phy ... info`。
+- 如果重启后恢复为 `no IR`，可以把“设置 `CN` 后重载 ath9k”作为进入 AWDL 验证前的准备步骤。
+
+### 2026-04-29 44/149 可发射后的 UxPlay 发现复测
+
+本轮目标是在 channel 44 和 149 都已经不再显示 `no IR` 的前提下，重新跑 OWL + UxPlay，看 iPhone 是否能在非同 Wi-Fi 场景通过 AWDL 发现 `OwlPi-AWDL`。
+
+启动前状态：
+
+- `iw phy phy2 info` 中 channel 44 显示为 `5220.0 MHz [44] (20.0 dBm)`，不再带 `no IR`。
+- `iw phy phy2 info` 中 channel 149 显示为 `5745.0 MHz [149] (18.0 dBm)`，不再带 `no IR`。
+- `wlan1` 是外接 AR928X/ath9k，MAC 为 `b4:74:9f:6c:bc:2f`。
+- `wlan0` 仍连接普通局域网，用于远程操作；AWDL 测试使用 `wlan1`。
+
+channel 149 验证：
+
+```sh
+nmcli device set wlan1 managed no
+nmcli device set p2p-dev-wlan1 managed no
+sudo ip link set wlan1 down
+sudo iw dev wlan1 set type monitor
+sudo iw dev wlan1 set monitor active
+sudo ip link set wlan1 up
+sudo iw dev wlan1 set channel 149 HT20
+sudo ./build/daemon/owl -i wlan1 -h awdl0 -c 149 -vv -f -N
+```
+
+关键结果：
+
+- OWL 输出 `Channel 149 [5745 MHz] is available for frame injection`。
+- `awdl0` 创建成功，IPv6 link-local 地址为 `fe80::b674:9fff:fe6c:bc2f/64`。
+- UxPlay 启动成功，监听 `0.0.0.0:41001` 和 `[::]:41001`。
+- `avahi-browse -a -t -r` 能看到：
+  - `awdl0 IPv6 OwlPi-AWDL _airplay._tcp`，地址 `fe80::b674:9fff:fe6c:bc2f`，端口 `41001`。
+  - `awdl0 IPv6 2CCF67A0257B@OwlPi-AWDL _raop._tcp`，地址同上，端口 `41001`。
+- `tcpdump -i awdl0 'ip6 and (udp port 5353 or tcp port 41001 or icmp6)'` 抓包 120 秒，只看到本机发出的 mDNS/Router Solicitation，没有看到 iPhone 入站 mDNS、NDP 或 TCP 41001。
+- `ip -6 neigh show dev awdl0` 为空。
+
+channel 44 验证：
+
+```sh
+sudo iw dev wlan1 set channel 44 HT20
+sudo ./build/daemon/owl -i wlan1 -h awdl0 -c 44 -vv -f -N
+```
+
+关键结果：
+
+- OWL 输出 `Channel 44 [5220 MHz] is available for frame injection`。
+- `awdl0` 再次创建成功，仍是 `fe80::b674:9fff:fe6c:bc2f/64`。
+- Avahi/UxPlay 再次发布到 `awdl0 IPv6`，端口仍为 `41001`。
+- `tcpdump -i awdl0` 抓包 120 秒，只看到本机发出的 mDNS/Router Solicitation，没有看到 iPhone 入站 mDNS、NDP 或 TCP 41001。
+- `ip -6 neigh show dev awdl0` 为空。
+
+本轮需要注意的干扰项：
+
+- 复测过程中，`avahi-browse` 一度在 `wlan0` 上看到 `ouhyoutekiiPhone.local / 192.168.0.105`。如果这就是测试 iPhone，说明手机当时仍连接普通 Wi-Fi；这种情况下 Screen Mirroring 里看到 `OwlPi-AWDL` 不能证明 AWDL 成功，因为它可能走的是普通 LAN。
+- 纯 AWDL 验证时，需要确保 iPhone 不连接任何热点，同时用 `avahi-browse` 确认 `wlan0` 上没有该 iPhone 的服务记录。
+
+本轮结论：
+
+- 44/149 的 `no IR` 限制已经不是当前直接阻塞点；OWL 能在两个频道上启动并确认可以 frame injection。
+- Avahi/UxPlay 发布到 `awdl0 IPv6` 已再次验证通过。
+- 失败点仍然在 AWDL peer/link-local 建立阶段：本轮没有看到 iPhone 作为 `awdl0` IPv6 neighbor，也没有看到 iPhone 通过 `awdl0` 发来的 mDNS 或 AirPlay TCP 连接。
+- 下一步不应继续优先调 UxPlay 参数，而应回到 AWDL 触发和 peer 建立：确认 iPhone 是否真的进入 Apple AWDL 发现状态，或用 Apple-to-Apple AirDrop/Screen Mirroring 做旁路抓包；如果新购对比 AR9280 到货，也应优先复测是否能稳定看到 peer。
 
 ## 项目代码结论
 
@@ -293,7 +637,7 @@ UxPlay v1.73 文档说明，它是 AirPlay 镜像/音频接收端，并且已经
 
 Linux kernel 文档把 active monitor 定义为一种 monitor flag：它会 ACK 发到本接口 MAC 地址的帧。OWL 明确请求了这个 flag。独立的 Wi-Fi injection 测试资料也提醒：active monitor 支持很有限，必须用实际驱动、实际网卡、实际内核验证，不能从“普通 Wi-Fi 能用”推断出来。
 
-购买时标注的 RTL8852BE 在现代 Linux 内核上通常由 `rtw89_8852be` 驱动支持，但当前系统没有枚举到 Realtek 设备，实际需要验证的是 `ath9k` 驱动下的 AR928X/AR9280。
+当前文档不再记录早先可能误记的购买型号，只按实际验证对象区分：当前测试卡记为 AR928X，新购到货后的卡作为对比卡单独记录。
 
 ## 推荐验证策略
 
@@ -357,6 +701,8 @@ iPhone connects to UxPlay over fe80::...%awdl0
 
 - 自动 monitor 切换会遇到 `Object busy`。
 - 可用 workaround 是先手动执行 `iw dev wlan1 set type monitor` 和 `iw dev wlan1 set monitor active`，再用 `-N` 启动 OWL。
+- 2026-04-29 重新验证后，更可靠的 workaround 是创建独立 active monitor 接口 `monawdl`，把原 `wlan1` down 掉，再用 `owl -i monawdl ... -N` 启动。
+- 直接使用 `wlan1` 时，`iw dev wlan1 info` 显示的频道可能和 `tcpdump` radiotap 里的实际频率不一致；必须用 radiotap 频率确认真实监听/发射频道。
 - channel 6 可用于 frame injection；channel 44/149 当前有 `No IR` 警告。
 
 ### 3. iPhone 是否发现树莓派这个 AWDL peer
@@ -495,6 +841,7 @@ dmesg | grep -Ei 'ath|ath9k|168c|firmware|cfg80211|tx descriptors'
 ```sh
 nmcli device status
 sudo nmcli dev set wlan1 managed no
+sudo nmcli dev set p2p-dev-wlan1 managed no
 sudo rfkill unblock wifi
 ```
 
@@ -502,6 +849,7 @@ sudo rfkill unblock wifi
 
 - 没有 wpa_supplicant/NetworkManager 进程立刻重新配置 `wlan1`。
 - 如果需要普通联网，使用以太网或另一块 Wi-Fi。
+- 用 `tcpdump` 的 radiotap 频率确认实际频道没有被后台扫描拉走。
 
 ### 3. 检查 monitor 和 active monitor 能力
 
@@ -558,12 +906,12 @@ source venv/bin/activate
 
 ```sh
 sudo nmcli dev set wlan1 managed no
+sudo nmcli dev set p2p-dev-wlan1 managed no
 sudo ip link set wlan1 down
-sudo iw dev wlan1 set type monitor
-sudo iw dev wlan1 set monitor active
-sudo ip link set wlan1 up
-sudo iw dev wlan1 set channel 6 HT20
-sudo ./build/daemon/owl -i wlan1 -h awdl0 -c 6 -vv -N
+sudo iw dev wlan1 interface add monawdl type monitor flags active
+sudo ip link set monawdl up
+sudo iw dev monawdl set channel 6 HT20
+sudo ./build/daemon/owl -i monawdl -h awdl0 -c 6 -vv -f -N
 ```
 
 然后用附近 Apple 设备打开 AirDrop 或 Screen Mirroring，触发 AWDL。
@@ -580,6 +928,7 @@ sudo ./build/daemon/owl -i wlan1 -h awdl0 -c 6 -vv -N
 - pcap 显示帧已发送，但无线侧完全抓不到。
 - 能发现 peer，但 unicast data 始终不成功。
 - 大量重试或 peer 频繁 add/remove，通常暗示 ACK 缺失或频道不同步。
+- `iw dev ... info` 显示在 channel 6/149，但 `tcpdump` radiotap 仍显示 `2412 MHz`，说明实际频道控制不可信；优先改用独立 `monawdl` 并把 `wlan1` down。
 
 ### 5. 验证监管域和频道选择
 
@@ -588,7 +937,7 @@ sudo ./build/daemon/owl -i wlan1 -h awdl0 -c 6 -vv -N
 ```sh
 iw reg get
 iw list
-sudo ./build/daemon/owl -i wlan1 -h awdl0 -c 6 -vv
+sudo ./build/daemon/owl -i monawdl -h awdl0 -c 6 -vv -f -N
 ```
 
 channel 6 跑通后，再重复测试 44 或 149。
@@ -598,6 +947,7 @@ channel 6 跑通后，再重复测试 44 或 149。
 - 选定频道没有被标记为 `disabled` 或 `no IR`。
 - OWL 没有警告该频道不能注入。
 - 换频道后仍能发现 Apple peer。
+- `tcpdump -i monawdl` 显示的 radiotap 频率与目标频道一致，例如 channel 6 应为 `2437 MHz`。
 
 ### 6. 验证 `awdl0`
 
@@ -624,6 +974,13 @@ ping -6 -I awdl0 fe80::<peer-address>
 - IPv6 neighbor table 里出现 peer。
 - link-local ping 成功，或者至少能在 OWL 日志里看到 unicast 尝试。
 
+当前 `monawdl` 路径下已经实测通过：
+
+```text
+fe80::3021:f2ff:feae:d539 lladdr 32:21:f2:ae:d5:39 PERMANENT
+ping -6 -I awdl0 fe80::3021:f2ff:feae:d539 -> 3 transmitted, 3 received
+```
+
 ### 7. 先证明 UxPlay 在普通局域网可用
 
 混入 AWDL 前，先验证接收端栈本身：
@@ -643,7 +1000,13 @@ ss -tulpen
 - 防火墙允许 mDNS 以及 UxPlay 需要的 TCP/UDP 端口。
 - `ss` 能确认 UxPlay 监听了 IPv6，或者至少确认它实际绑定了哪些地址。
 
-这个基线没跑通前，不要进入 AWDL 验证。
+当前状态：
+
+- `uxplay 1.71.1-1` 已安装。
+- `avahi-daemon` active。
+- 本轮重点先验证 AWDL 侧发布，所以普通 LAN 下真实画面渲染仍建议单独补一轮；当前用的是 `fakesink`，适合验证发现/监听，不验证显示输出。
+
+这个基线没跑通前，不要把 AirPlay 协议问题和 AWDL 链路问题混在一起排查。
 
 ### 8. 将 Avahi 和 UxPlay 绑定到 `awdl0`
 
@@ -668,11 +1031,23 @@ sudo tcpdump -ni awdl0 'udp port 5353'
 uxplay -n OwlPi-AWDL -p 7100 -vsync no
 ```
 
+本机当前更适合先用固定名称和测试 sink 做发现验证：
+
+```sh
+uxplay -n OwlPi-AWDL -nh -p 41000 -vs fakesink -as fakesink -nohold -d
+```
+
 通过标准：
 
 - `avahi-browse` 显示 UxPlay 服务发布在 `awdl0` 上，并且有 IPv6 地址。
 - `awdl0` 上能看到 mDNS query 和 response。
 - Avahi 响应时，OWL 的 multicast TX 计数或日志有增长。
+
+当前状态：
+
+- 已确认 `avahi-browse -a -t -r` 能看到 `_airplay._tcp` 和 `_raop._tcp` 发布在 `awdl0 IPv6` 上。
+- 已确认 `tcpdump -i awdl0` 能看到本机 Avahi 对 `_airplay._tcp.local` / `_raop._tcp.local` 的 mDNS 查询/响应。
+- 尚未看到 iPhone 通过 `awdl0` 发来的 mDNS query 或 TCP 41001 连接。
 
 失败现象：
 
@@ -706,6 +1081,8 @@ uxplay -n OwlPi-AWDL -p 7100 -vsync no
 - 把 Apple 设备放在 1-2 米内。
 - 近距离测试时用 `-f` 运行 OWL，临时关闭 RSSI 过滤。
 - 确认 OWL 用的是外接 Wi-Fi 卡 `wlan1`，而不是 Pi 板载 Wi-Fi `wlan0`。
+- 确认 OWL 实际使用的是独立 monitor 接口 `monawdl`，并且原 `wlan1` 已 down。
+- 用无线侧 `tcpdump` 的 radiotap 频率确认当前确实在 channel 6 的 `2437 MHz`，不要只看 `iw dev ... info`。
 
 有 peer 但没有 IPv6 流量：
 
@@ -742,6 +1119,8 @@ uxplay -n OwlPi-AWDL -p 7100 -vsync no
 - `awdl0` 能获得 IPv6 neighbor；
 - `awdl0` 上能看到 link-local IPv6 流量。
 
+截至 2026-04-29，使用 `monawdl` 路径时，上面这些底层条件曾经通过一次。ath9k 重载后，channel 44/149 的 `no IR` 限制也已在当前会话解除，并且 OWL 能在 44/149 上确认 frame injection 可用。Avahi/UxPlay 阶段已经多轮验证：服务以 IPv6 形式发布到 `awdl0` 已通过；iPhone 是否会通过 `awdl0` 访问 AirPlay 接收端仍未通过。
+
 如果这些通过但 UxPlay 不能被发现，重点看 Avahi/UxPlay 的 IPv6 DNS-SD 接口绑定。
 
 如果 UxPlay 能被发现但连不上，重点看 UxPlay IPv6 监听、防火墙端口和 AirPlay 协议兼容性。
@@ -752,8 +1131,10 @@ uxplay -n OwlPi-AWDL -p 7100 -vsync no
 
 - 本仓库 OWL README：`README.md`
 - UxPlay upstream README: https://github.com/FDH2/UxPlay
+- OWL upstream README: https://github.com/seemoo-lab/owl
+- OpenDrop limitations and compatibility notes: https://deepwiki.com/seemoo-lab/opendrop/1.3-limitations-and-compatibility
+- Apple Support: Use AirDrop on your iPhone or iPad: https://support.apple.com/en-us/ht204144
 - Linux cfg80211 monitor flags documentation: https://docs.kernel.org/driver-api/80211/cfg80211.html
 - Wi-Fi injection/active monitor testing notes: https://github.com/vanhoefm/wifi-injection
-- Linux Kernel Driver Database entry for RTL8852BE: https://cateee.net/lkddb/web-lkddb/RTW89_8852BE.html
 - Raspberry Pi forum thread on Atheros PCIe DMA failure: https://forums.raspberrypi.com/viewtopic.php?t=343846
 - Launchpad bug about `pcie-32bit-dma` workaround: https://bugs.launchpad.net/bugs/1927037
