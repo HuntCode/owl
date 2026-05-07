@@ -414,7 +414,7 @@ int set_channel(int ifindex, int channel) {
 
 	NLA_PUT_U32(m, NL80211_ATTR_IFINDEX, ifindex);
 	NLA_PUT_U32(m, NL80211_ATTR_WIPHY_FREQ, freq);
-	NLA_PUT_U32(m, NL80211_ATTR_WIPHY_CHANNEL_TYPE, NL80211_CHAN_HT40PLUS);
+	NLA_PUT_U32(m, NL80211_ATTR_WIPHY_CHANNEL_TYPE, NL80211_CHAN_HT20);
 
 	err = nl_send_auto(nl80211_state.socket, m);
 	if (err < 0) {
